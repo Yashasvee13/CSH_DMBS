@@ -305,14 +305,14 @@ def updateAdmission(id, type, department, dischargeDate, fee, patient, condition
         conn = openConnection()
         cursor = conn.cursor()
 
-        # Retrieve AdmissionTypeID based on AdmissionTypeName
-        cursor.execute("SELECT AdmissionTypeID FROM AdmissionType WHERE AdmissionTypeName = %s", (type,))
+        # Retrieve AdmissionTypeID based on AdmissionTypeName (case insensitive)
+        cursor.execute("SELECT AdmissionTypeID FROM AdmissionType WHERE LOWER(AdmissionTypeName) = LOWER(%s)", (type,))
         admission_type_id = cursor.fetchone()
         if not admission_type_id:
             raise ValueError(f"Admission type '{type}' not found.")
         
-        # Retrieve DeptId based on DeptName
-        cursor.execute("SELECT DeptId FROM Department WHERE DeptName = %s", (department,))
+        # Retrieve DeptId based on DeptName (case insensitive)
+        cursor.execute("SELECT DeptId FROM Department WHERE LOWER(DeptName) = LOWER(%s)", (department,))
         department_id = cursor.fetchone()
         if not department_id:
             raise ValueError(f"Department '{department}' not found.")
