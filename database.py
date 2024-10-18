@@ -13,8 +13,8 @@ def openConnection():
         psycopg2.extensions.connection: A database connection object if successful, None otherwise.
     """
     # Connection parameters - ENTER YOUR LOGIN AND PASSWORD HERE
-    userid = "y24s2c9120_ysur0067"
-    passwd = "Pluto@07"
+    userid = "y24s2c9120_rnag0014"
+    passwd = "Sailaja@321"
     myHost = "awsprddbs4836.shared.sydney.edu.au"
 
     # Create a connection to the database
