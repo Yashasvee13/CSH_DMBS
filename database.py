@@ -1,19 +1,38 @@
 #!/usr/bin/env python3
 import psycopg2
-from datetime import datetime
-from database_connection import openConnection
 
 #####################################################
 ##  Database Connection
 #####################################################
 
-'''
-Connect to the database using the connection string
-'''
+def openConnection():
+    """
+    Open a connection to the PostgreSQL database.
 
-'''
-Validate staff based on username and password
-'''
+    Returns:
+        psycopg2.extensions.connection: A database connection object if successful, None otherwise.
+    """
+    # Connection parameters - ENTER YOUR LOGIN AND PASSWORD HERE
+    userid = "y24s2c9120_ysur0067"
+    passwd = "Pluto@07"
+    myHost = "awsprddbs4836.shared.sydney.edu.au"
+
+    # Create a connection to the database
+    conn = None
+    try:
+        # Attempt to establish a connection using the provided credentials
+        conn = psycopg2.connect(
+            database=userid,  # Database name (same as userid in this case)
+            user=userid,      # Username for database login
+            password=passwd,  # Password for database login
+            host=myHost       # Host address of the database server
+        )
+    except psycopg2.Error as sqle:
+        # If a database-related error occurs, print the error message
+        print("psycopg2.Error : " + sqle.pgerror)
+    
+    # Return the connection object (or None if connection failed)
+    return conn
 
 
 def checkLogin(login, password):
@@ -57,12 +76,6 @@ def checkLogin(login, password):
     # Return the result if found, otherwise return None
     return result if result else None
 
-
-
-
-'''
-List all the associated admissions records in the database by staff
-'''
 
 def findAdmissionsByAdmin(login):
     """
@@ -115,10 +128,11 @@ def findAdmissionsByAdmin(login):
         discharge_date = ""
         if row[3] is not None:
             try:
-                date_obj = datetime.strptime(str(row[3]), '%Y-%m-%d')
-                discharge_date = date_obj.strftime('%d-%m-%Y')
+                # Split the date string by '-' and rearrange it
+                year, month, day = str(row[3]).split('-')
+                discharge_date = f'{day}-{month}-{year}'
             except ValueError:
-                # If date parsing fails, use the original value
+                # If splitting fails, use the original value
                 discharge_date = str(row[3])
 
         # Create a dictionary for each admission, replacing None with empty string
@@ -134,13 +148,6 @@ def findAdmissionsByAdmin(login):
 
     return admissions_list
 
-'''
-Find a list of admissions based on the searchString provided as parameter
-See assignment description for search specification
-'''
-
-
-from datetime import datetime
 
 def findAdmissionsByCriteria(searchString):
     conn = openConnection()
@@ -190,10 +197,11 @@ def findAdmissionsByCriteria(searchString):
         discharge_date = ""
         if row[3] is not None:
             try:
-                date_obj = datetime.strptime(str(row[3]), '%Y-%m-%d')
-                discharge_date = date_obj.strftime('%d-%m-%Y')
+                # Split the date string by '-' and rearrange it
+                year, month, day = str(row[3]).split('-')
+                discharge_date = f'{day}-{month}-{year}'
             except ValueError:
-                # If date parsing fails, use the original value
+                # If splitting fails, use the original value
                 discharge_date = str(row[3])
 
         # Create a dictionary for each admission, replacing None with empty string
@@ -209,10 +217,6 @@ def findAdmissionsByCriteria(searchString):
 
     return admissions_list
 
-
-'''
-Add a new addmission 
-'''
 
 def addAdmission(type, department, patient, condition, admin):
     """
@@ -282,9 +286,6 @@ def addAdmission(type, department, patient, condition, admin):
         return False
 
 
-'''
-Update an existing admission
-'''
 def updateAdmission(id, type, department, dischargeDate, fee, patient, condition):
     """
     Update an existing admission in the database.
@@ -304,7 +305,7 @@ def updateAdmission(id, type, department, dischargeDate, fee, patient, condition
     try:
         conn = openConnection()
         cursor = conn.cursor()
-
+        print(patient)
         # Retrieve AdmissionTypeID based on AdmissionTypeName (case insensitive)
         cursor.execute("SELECT AdmissionTypeID FROM AdmissionType WHERE LOWER(AdmissionTypeName) = LOWER(%s)", (type,))
         admission_type_id = cursor.fetchone()
@@ -316,6 +317,12 @@ def updateAdmission(id, type, department, dischargeDate, fee, patient, condition
         department_id = cursor.fetchone()
         if not department_id:
             raise ValueError(f"Department '{department}' not found.")
+        
+        # Retrieve PatientID based on Patient (case insensitive)
+        cursor.execute("SELECT PatientId FROM Patient WHERE LOWER(PatientID) = LOWER(%s)", (patient,))
+        patient_id = cursor.fetchone()
+        if not patient_id:
+            raise ValueError(f"Patient '{patient}' not found.")
 
         # SQL query to update the admission record
         query = """
@@ -336,7 +343,7 @@ def updateAdmission(id, type, department, dischargeDate, fee, patient, condition
             department_id[0], 
             dischargeDate if dischargeDate else None, 
             fee if fee else None, 
-            patient, 
+            patient_id, 
             condition if condition else None,
             id
         ))
