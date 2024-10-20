@@ -5,142 +5,74 @@ import psycopg2
 ##  Database Connection
 #####################################################
 
+'''
+Connect to the database using the connection string
+'''
 def openConnection():
-    """
-    Open a connection to the PostgreSQL database.
+    userid = "postgres"           
+    passwd = ""  
+    myHost = "localhost"           
+    myDatabase = "Assignment2"
 
-    Returns:
-        psycopg2.extensions.connection: A database connection object if successful, None otherwise.
-    """
-    # Connection parameters - ENTER YOUR LOGIN AND PASSWORD HERE
-    userid = "y24s2c9120_rnag0014"
-    passwd = "Sailaja@321"
-    myHost = "awsprddbs4836.shared.sydney.edu.au"
-
-    # Create a connection to the database
     conn = None
     try:
-        # Attempt to establish a connection using the provided credentials
+        #
         conn = psycopg2.connect(
-            database=userid,  # Database name (same as userid in this case)
-            user=userid,      # Username for database login
-            password=passwd,  # Password for database login
-            host=myHost       # Host address of the database server
+            database=myDatabase,  
+            user=userid,      
+            password=passwd,  
+            host=myHost       
         )
     except psycopg2.Error as sqle:
-        # If a database-related error occurs, print the error message
+        
         print("psycopg2.Error : " + sqle.pgerror)
     
-    # Return the connection object (or None if connection failed)
     return conn
 
 
+'''
+Validate staff based on username and password
+'''
 def checkLogin(login, password):
-    """
-    Check if the provided login credentials are valid.
 
-    This function queries the database to verify if the given username (case-insensitive)
-    and password combination exists in the administrator table.
-
-    Args:
-        login (str): The username to check.
-        password (str): The password to verify.
-
-    Returns:
-        tuple or None: A tuple containing user information if credentials are valid,
-                       None otherwise.
-    """
-    conn = openConnection()  # Establish database connection
+    conn = openConnection()
     cursor = conn.cursor()
 
-    # SQL query with case-insensitive username comparison
-    query = """
-        SELECT username, firstname, lastname, email 
-        FROM administrator 
-        WHERE LOWER(username) = LOWER(%s) AND password = %s
-    """
+    # Call stored procedure
+    cursor.callproc('check_admin_login_procedure', (login, password))
 
-    # Execute the query with provided login and password
-    cursor.execute(query, (login, password))
-
-    # Fetch the first matching result
     result = cursor.fetchone()
 
-    # Close the cursor and database connection
     cursor.close()
     conn.close()
 
-    # Print the result for debugging (consider removing in production)
-    print(result)
-
-    # Return the result if found, otherwise return None
     return result if result else None
 
 
+'''
+List all the associated admissions records in the database by staff
+'''
 def findAdmissionsByAdmin(login):
-    """
-    Retrieve admissions managed by a specific administrator.
-
-    This function queries the database to fetch admission details for all admissions
-    managed by the administrator with the given login.
-
-    Args:
-        login (str): The username of the administrator.
-
-    Returns:
-        list: A list of dictionaries, each containing details of an admission.
-    """
-    conn = openConnection()  # Establish database connection
+ 
+    conn = openConnection()
     cursor = conn.cursor()
 
-    # SQL query to fetch admission details
-    query = """
-        SELECT a.AdmissionID, at.AdmissionTypeName, d.DeptName, 
-               a.DischargeDate, a.Fee, 
-               p.FirstName || ' ' || p.LastName AS PatientName, 
-               a.Condition
-        FROM Admission a
-        JOIN AdmissionType at ON a.AdmissionType = at.AdmissionTypeID
-        JOIN Department d ON a.Department = d.DeptId
-        JOIN Patient p ON a.Patient = p.PatientID
-        WHERE a.Administrator = %s
-        ORDER BY 
-            a.DischargeDate IS NULL,
-            COALESCE(a.DischargeDate, '9999-12-31') DESC,
-            PatientName ASC,
-            at.AdmissionTypeName DESC
-    """
-
-    # Execute the query with the provided login
-    cursor.execute(query, (login,))
+    # Call stored procedure
+    cursor.callproc('find_admissions_by_admin_procedure', (login,))
     
-    # Fetch all results
     results = cursor.fetchall()
 
-    # Close cursor and database connection
     cursor.close()
     conn.close()
 
-    # Convert results to a list of dictionaries for easier access in templates
     admissions_list = []
     for row in results:
-        # Format the discharge date to DMY format
-        discharge_date = ""
-        if row[3] is not None:
-            try:
-                # Split the date string by '-' and rearrange it
-                year, month, day = str(row[3]).split('-')
-                discharge_date = f'{day}-{month}-{year}'
-            except ValueError:
-                # If splitting fails, use the original value
-                discharge_date = str(row[3])
-
-        # Create a dictionary for each admission, replacing None with empty string
+        
         admissions_list.append({
             'admission_id': row[0] if row[0] is not None else "",
             'admission_type': row[1] if row[1] is not None else "",
             'admission_department': row[2] if row[2] is not None else "",
-            'discharge_date': discharge_date,
+            'discharge_date': row[3] if row[3] is not None else "",
             'fee': row[4] if row[4] is not None else "",
             'patient': row[5] if row[5] is not None else "",
             'condition': row[6] if row[6] is not None else ""
@@ -149,14 +81,19 @@ def findAdmissionsByAdmin(login):
     return admissions_list
 
 
+'''
+Find a list of admissions based on the searchString provided as parameter
+See assignment description for search specification
+'''
 def findAdmissionsByCriteria(searchString):
+
     conn = openConnection()
     cursor = conn.cursor()
 
-    # SQL query to find admissions based on the search criteria
     query = """
         SELECT a.AdmissionID, at.AdmissionTypeName, d.DeptName, 
-               a.DischargeDate, a.Fee, 
+               TO_CHAR(a.DischargeDate, 'DD-MM-YYYY') AS discharge_date, -- Format date in SQL
+               a.Fee, 
                p.FirstName || ' ' || p.LastName AS PatientName, 
                a.Condition
         FROM Admission a
@@ -177,66 +114,45 @@ def findAdmissionsByCriteria(searchString):
             PatientName ASC
     """
 
-    # Prepare the search pattern for wildcard matching
-    searchPattern = f"%{searchString}%"
     
-    # Execute the query with the search pattern applied to all relevant fields
+    searchPattern = f"%{searchString}%"
+
+    
     cursor.execute(query, (searchString, searchPattern, searchPattern, searchPattern, searchPattern))
     results = cursor.fetchall()
-    
+
     cursor.close()
     conn.close()
 
     if not results:
         print(f"No results found for search string: {searchString}")
 
-    # Convert results to a list of dictionaries for easier access in templates
-    admissions_list = []
-    for row in results:
-        # Format the discharge date to DMY format
-        discharge_date = ""
-        if row[3] is not None:
-            try:
-                # Split the date string by '-' and rearrange it
-                year, month, day = str(row[3]).split('-')
-                discharge_date = f'{day}-{month}-{year}'
-            except ValueError:
-                # If splitting fails, use the original value
-                discharge_date = str(row[3])
-
-        # Create a dictionary for each admission, replacing None with empty string
-        admissions_list.append({
-            'admission_id': row[0] if row[0] is not None else "",
-            'admission_type': row[1] if row[1] is not None else "",
-            'admission_department': row[2] if row[2] is not None else "",
-            'discharge_date': discharge_date,
-            'fee': row[4] if row[4] is not None else "",
-            'patient': row[5] if row[5] is not None else "",
-            'condition': row[6] if row[6] is not None else ""
-        })
+   
+    admissions_list = [
+        {
+            'admission_id': row[0] if row[0] else "",
+            'admission_type': row[1] if row[1] else "",
+            'admission_department': row[2] if row[2] else "",
+            'discharge_date': row[3] if row[3] else "",  
+            'fee': row[4] if row[4] else "",
+            'patient': row[5] if row[5] else "",
+            'condition': row[6] if row[6] else ""
+        }
+        for row in results
+    ]
 
     return admissions_list
 
-
+'''
+Add a new addmission 
+'''
 def addAdmission(type, department, patient, condition, admin):
-    """
-    Add a new admission to the database.
 
-    Args:
-        type (str): Name of the admission type.
-        department_name (str): Name of the department.
-        patient_name (str): Name of the patient.
-        condition (str): Medical condition of the patient.
-        admin_username (str): Username of the administrator.
-
-    Returns:
-        bool: True if admission was added successfully, False otherwise.
-    """
     try:
         conn = openConnection()
         cursor = conn.cursor()
 
-        # Retrieve AdmissionTypeID based on AdmissionTypeName (case-insensitive)
+        
         cursor.execute(
             "SELECT AdmissionTypeID FROM AdmissionType WHERE LOWER(AdmissionTypeName) = LOWER(%s)", 
             (type,)
@@ -245,7 +161,7 @@ def addAdmission(type, department, patient, condition, admin):
         if not admission_type_id:
             raise ValueError(f"Admission type '{type}' not found.")
         
-        # Retrieve DeptId based on DeptName (case-insensitive)
+        
         cursor.execute(
             "SELECT DeptId FROM Department WHERE LOWER(DeptName) = LOWER(%s)", 
             (department,)
@@ -257,74 +173,62 @@ def addAdmission(type, department, patient, condition, admin):
         patient_id = patient
         print(patient_id)
 
-        # SQL query to insert new admission
+        
         query = """
             INSERT INTO Admission (AdmissionType, Department, Patient, Administrator, Condition)
             VALUES (%s, %s, %s, %s, %s)
             RETURNING AdmissionID
         """
         
-        # Execute the insert query
+       
         cursor.execute(query, (admission_type_id, department_id, patient_id, admin, condition))
         
-        # Fetch the newly created AdmissionID
+        
         admission_id = cursor.fetchone()[0]
 
-        # Commit the transaction
+        
         conn.commit()
 
-        # Close the cursor and connection
+        
         cursor.close()
         conn.close()
 
-        return admission_id is not None  # Return True if successful
+        return admission_id is not None 
 
     except Exception as e:
         print(f"An error occurred: {e}")
         if conn:
-            conn.rollback()  # Rollback in case of error
+            conn.rollback()  
         return False
 
-
+'''
+Update an existing admission
+'''
 def updateAdmission(id, type, department, dischargeDate, fee, patient, condition):
-    """
-    Update an existing admission in the database.
 
-    Args:
-        id (int): ID of the admission to update.
-        type (str): Name of the admission type.
-        department (str): Name of the department.
-        dischargeDate (str or None): Discharge date of the patient.
-        fee (float or None): Fee charged for the admission.
-        patient (str): ID of the patient.
-        condition (str or None): Medical condition of the patient.
-
-    Returns:
-        bool: True if admission was updated successfully, False otherwise.
-    """
     try:
         conn = openConnection()
         cursor = conn.cursor()
-        print(patient)
-        # Retrieve AdmissionTypeID based on AdmissionTypeName (case insensitive)
+        
+        
         cursor.execute("SELECT AdmissionTypeID FROM AdmissionType WHERE LOWER(AdmissionTypeName) = LOWER(%s)", (type,))
         admission_type_id = cursor.fetchone()
         if not admission_type_id:
             raise ValueError(f"Admission type '{type}' not found.")
         
-        # Retrieve DeptId based on DeptName (case insensitive)
+        
         cursor.execute("SELECT DeptId FROM Department WHERE LOWER(DeptName) = LOWER(%s)", (department,))
         department_id = cursor.fetchone()
         if not department_id:
             raise ValueError(f"Department '{department}' not found.")
         
-        # Retrieve PatientID based on Patient (case insensitive)
+       
         cursor.execute("SELECT PatientId FROM Patient WHERE LOWER(PatientID) = LOWER(%s)", (patient,))
         patient_id = cursor.fetchone()
         if not patient_id:
             raise ValueError(f"Patient '{patient}' not found.")
 
-        # SQL query to update the admission record
+       
         query = """
             UPDATE Admission 
             SET 
@@ -337,7 +241,7 @@ def updateAdmission(id, type, department, dischargeDate, fee, patient, condition
             WHERE AdmissionID = %s
         """
         
-        # Execute the update query with parameters
+        
         cursor.execute(query, (
             admission_type_id[0], 
             department_id[0], 
@@ -348,17 +252,17 @@ def updateAdmission(id, type, department, dischargeDate, fee, patient, condition
             id
         ))
 
-        # Commit the transaction
+        
         conn.commit()
 
-        # Close the cursor and connection
+        
         cursor.close()
         conn.close()
 
-        return True  # Return True if successful
+        return True  
 
     except Exception as e:
         print(f"An error occurred: {e}")
         if conn:
-            conn.rollback()  # Rollback in case of error
+            conn.rollback()  
         return False
